@@ -1,19 +1,19 @@
-name: build
+name: Build binaries, build container images, push to registry, deploy to gke
 on:   
   push:
     branches:
-      - ci-cd-workflow
+      - master
 env:
-  GKE_CLUSTER: bitraw-cluster    # Add your cluster name here.
-  GKE_ZONE: us-central1-a   # Add your cluster zone here.
-  DEPLOYMENT_NAME: gke-test # Add your deployment name here.
-  IMAGE: dingir-matchengine
+  IMAGE: dingir
+  GCLOUD_PROJECT: ${{ secrets.GCLOUD_PROJECT }}
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: install system depenencies
-        run: sudo apt install libpq-dev cmake gcc g++ postgresql-client-12 pkg-config libssl-dev musl-tools
+        run: |-
+          sudo add-apt-repository ppa:rmescandon/yq
+          sudo apt install yq  libpq-dev cmake gcc g++ postgresql-client-12
       - uses: actions/checkout@v2
         with:
           submodules: 'true'
@@ -31,45 +31,41 @@ jobs:
       - uses: google-github-actions/setup-gcloud@master
         with:
           service_account_key: ${{ secrets.GKE_SERVICE_TOKEN }}
-          project_id: bitraw-backend
+          project_id: ${{ secrets.GCLOUD_PROJECT }}
           # Configure docker to use the gcloud command-line tool as a credential helper
       - run: |-
           gcloud --quiet auth configure-docker
       - uses: google-github-actions/get-gke-credentials@main
         with:
-          cluster_name: ${{ env.GKE_CLUSTER }}
-          location: ${{ env.GKE_ZONE }}
+          cluster_name: ${{ secrets.BITRAW_GKE_CLUSTER }}
+          location: ${{ secrets.BITRAW_GKE_ZONE }}
           credentials: ${{ secrets.GKE_SERVICE_TOKEN }}
       - name: Build containers
         run: |-
-          docker build . --tag "gcr.io/bitraw-backend/$IMAGE:$GITHUB_SHA" \
+          docker build . --tag "gcr.io/$GCLOUD_PROJECT/$IMAGE-matchengine:$GITHUB_SHA" \
             --build-arg GITHUB_SHA="$GITHUB_SHA" \
             --build-arg GITHUB_REF="$GITHUB_REF" \
-            -f Dockerfile
-          docker build . --tag "gcr.io/bitraw-backend/$IMAGE-persistor:$GITHUB_SHA" \
+            -f release/Dockerfile.matchengine
+          docker build . --tag "gcr.io/$GCLOUD_PROJECT/$IMAGE-persistor:$GITHUB_SHA" \
             --build-arg GITHUB_SHA="$GITHUB_SHA" \
             --build-arg GITHUB_REF="$GITHUB_REF" \
-            -f Dockerfile.persistor
-          docker build . --tag "gcr.io/bitraw-backend/$IMAGE-restapi:$GITHUB_SHA" \
+            -f release/Dockerfile.persistor
+          docker build . --tag "gcr.io/$GCLOUD_PROJECT/$IMAGE-restapi:$GITHUB_SHA" \
             --build-arg GITHUB_SHA="$GITHUB_SHA" \
             --build-arg GITHUB_REF="$GITHUB_REF" \
-            -f Dockerfile.restapi
+            -f release/Dockerfile.restapi
       - name: Publish
         run: |-
-          docker push "gcr.io/bitraw-backend/$IMAGE:$GITHUB_SHA"
-          docker push "gcr.io/bitraw-backend/$IMAGE-persistor:$GITHUB_SHA"
-          docker push "gcr.io/bitraw-backend/$IMAGE-restapi:$GITHUB_SHA"
-      - name: Set up yq
-        run: |-
-          sudo add-apt-repository ppa:rmescandon/yq
-          sudo apt install yq
+          docker push "gcr.io/$GCLOUD_PROJECT/$IMAGE-matchengine:$GITHUB_SHA"
+          docker push "gcr.io/$GCLOUD_PROJECT/$IMAGE-persistor:$GITHUB_SHA"
+          docker push "gcr.io/$GCLOUD_PROJECT/$IMAGE-restapi:$GITHUB_SHA"
       - name: Deploy
         run: |-
           kubectl delete configmap envoy-files-config -n default
-          kubectl create configmap envoy-files-config --from-file=orchestra/proto/exchange/matchengine.pb --from-file=kubernetes/envoy.yaml  -n default
-          REPO=gcr.io/bitraw-backend/$IMAGE:$GITHUB_SHA yq e -i '.spec.template.spec.containers[0].image = strenv(REPO)' kubernetes/matchengine-deployment.yaml
-          REPO=gcr.io/bitraw-backend/$IMAGE-persistor:$GITHUB_SHA yq e -i '.spec.template.spec.containers[0].image = strenv(REPO)' kubernetes/persistor-deployment.yaml
-          REPO=gcr.io/bitraw-backend/$IMAGE-restapi:$GITHUB_SHA yq e -i '.spec.template.spec.containers[0].image = strenv(REPO)' kubernetes/restapi-deployment.yaml
+          kubectl create configmap envoy-files-config --from-file=orchestra/proto/exchange/matchengine.pb --from-file=kubernetes/envoy.yaml -n default
+          REPO=gcr.io/$GCLOUD_PROJECT/$IMAGE-matchengine:$GITHUB_SHA yq e -i '.spec.template.spec.containers[0].image = strenv(REPO)' kubernetes/matchengine-deployment.yaml
+          REPO=gcr.io/$GCLOUD_PROJECT/$IMAGE-persistor:$GITHUB_SHA yq e -i '.spec.template.spec.containers[0].image = strenv(REPO)' kubernetes/persistor-deployment.yaml
+          REPO=gcr.io/$GCLOUD_PROJECT/$IMAGE-restapi:$GITHUB_SHA yq e -i '.spec.template.spec.containers[0].image = strenv(REPO)' kubernetes/restapi-deployment.yaml
           kubectl apply -f kubernetes/matchengine-deployment.yaml
           kubectl apply -f kubernetes/persistor-deployment.yaml
           kubectl apply -f kubernetes/restapi-deployment.yaml
