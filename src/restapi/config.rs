@@ -40,7 +40,6 @@ impl Default for Settings {
 impl Settings {
     pub fn new() -> Self {
         let mut conf = Config::default();
-        // TODO: @gcomte implement environment based config
         conf.merge(File::with_name("config/restapi/default.yaml")).unwrap();
         conf.try_into().unwrap()
     }
