@@ -2,7 +2,7 @@ name: Build binaries, build container images, push to registry, deploy to gke
 on:   
   push:
     branches:
-      - master
+      - ci-cd-workflow
 env:
   IMAGE: dingir
   GCLOUD_PROJECT: ${{ secrets.GCLOUD_PROJECT }}
