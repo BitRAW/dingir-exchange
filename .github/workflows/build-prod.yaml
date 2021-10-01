@@ -62,7 +62,7 @@ jobs:
       - name: Deploy
         run: |-
           kubectl delete configmap envoy-files-config -n default
-          kubectl create configmap envoy-files-config --from-file=orchestra/proto/exchange/matchengine.pb --from-file=kubernetes/envoy.yaml -n default
+          kubectl create configmap envoy-files-config --from-file=orchestra/proto/exchange/matchengine.pb --from-file=orchestra/docker/envoy.yaml -n default
           REPO=gcr.io/$GCLOUD_PROJECT/$IMAGE-matchengine:$GITHUB_SHA yq e -i '.spec.template.spec.containers[0].image = strenv(REPO)' kubernetes/matchengine-deployment.yaml
           REPO=gcr.io/$GCLOUD_PROJECT/$IMAGE-persistor:$GITHUB_SHA yq e -i '.spec.template.spec.containers[0].image = strenv(REPO)' kubernetes/persistor-deployment.yaml
           REPO=gcr.io/$GCLOUD_PROJECT/$IMAGE-restapi:$GITHUB_SHA yq e -i '.spec.template.spec.containers[0].image = strenv(REPO)' kubernetes/restapi-deployment.yaml
