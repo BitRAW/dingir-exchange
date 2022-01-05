@@ -881,9 +881,9 @@ dependencies = [
 
 [[package]]
 name = "futures-core"
-version = "0.3.13"
+version = "0.3.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15496a72fabf0e62bdc3df11a59a3787429221dd0710ba8ef163d6f7a9112c94"
+checksum = "d0c8ff0461b82559810cdccfde3215c3f373807f5e5232b71479bff7bb2583d7"
 
 [[package]]
 name = "futures-executor"
@@ -1625,7 +1625,7 @@ checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 [[package]]
 name = "orchestra"
 version = "0.1.0"
-source = "git+https://github.com/gcomte/orchestra.git?branch=master#e6c97cacd1bb0016684bb2e43088b2d6f44b832f"
+source = "git+https://github.com/BitRAW/orchestra.git?branch=master#8a807e0494b9cffbdb12c5bb10d7d2147fe441df"
 dependencies = [
  "prost",
  "serde 1.0.124",
