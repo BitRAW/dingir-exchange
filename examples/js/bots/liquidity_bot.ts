@@ -1,66 +1,102 @@
 import { defaultClient } from "../client";
 import { ORDER_SIDE_ASK, ORDER_SIDE_BID, ORDER_TYPE_LIMIT, TestUser } from "../config";
 
-const base = "DIF";
-const quote = "BTC";
-const market = `${base}_${quote}`;
-const botUseFunds = 0.8; // Use 80% of funds
-const deviation = 1.002;
-const tiersAmount = 10;
-const fee = "0";
-const balanceCache = {};
+interface LiquidityBotConfig {
+  base: string;
+  quote: string;
+  deviation: number;
+  tiersAmount: number;
+  userId: TestUser;
+}
 
-const tick = async (user_id: TestUser) => {
-  await defaultClient.connect();
-  const balance = await defaultClient.balanceQuery(user_id);
+class LiquidityBot {
+  market: string;
+  makerFee = 0;
+  takerFee = 0;
+  balanceCache = {};
 
-  const Q_BAL = (+balance.get(quote).available + +balance.get(quote).frozen) * botUseFunds;
-  const B_BAL = (+balance.get(base).available + +balance.get(base).frozen) * botUseFunds;
-
-  if (balanceCache[quote] === Q_BAL && balanceCache[base] === B_BAL) {
-    console.log("not trades happend, skipping");
-    return;
+  constructor(private config: LiquidityBotConfig) {
+    this.market = `${config.base}_${config.quote}`;
   }
 
-  balanceCache[quote] = Q_BAL;
-  balanceCache[base] = B_BAL;
+  async init() {
+    await defaultClient.connect();
+  }
 
-  await defaultClient.orderCancelAll(user_id, market);
+  async tick() {
+    const { quote, base, userId, deviation, tiersAmount } = this.config;
+    const balance = await defaultClient.balanceQuery(userId);
 
-  const getPrice = (tier: number, side: number) => {
-    return (Q_BAL * Math.pow(deviation, side * (2 * tier + 1))) / B_BAL;
-  };
+    const balanceQuote = +balance.get(quote).available + +balance.get(quote).frozen;
+    const balanceBase = +balance.get(base).available + +balance.get(base).frozen;
 
-  const orders = new Array(tiersAmount).fill(null).reduce((acc: any[], _, tier) => {
-    const askPrice = getPrice(tier, 1);
-    const bidPrice = getPrice(tier, -1);
-    const askOrder = {
-      market,
-      order_side: ORDER_SIDE_ASK,
-      order_type: ORDER_TYPE_LIMIT,
-      amount: (B_BAL / tiersAmount).toFixed(6),
-      price: askPrice.toFixed(6),
-      taker_fee: fee,
-      maker_fee: fee,
+    if (this.balanceCache[quote] === balanceQuote && this.balanceCache[base] === balanceBase) {
+      console.log("not trades happend, skipping");
+      return;
+    }
+
+    this.balanceCache[quote] = balanceQuote;
+    this.balanceCache[base] = balanceBase;
+
+    const getPrice = (tier: number, side: number) => {
+      return (balanceQuote * Math.pow(deviation, side * (2 * tier + 1))) / balanceBase;
     };
 
-    const bidOrder = {
-      market,
-      order_side: ORDER_SIDE_BID,
+    const orders = new Array(tiersAmount).fill(null).reduce((acc: any[], _, tier) => {
+      const askPrice = getPrice(tier, 1);
+      const askAmount = balanceBase / Math.pow(deviation, tier) - balanceBase / Math.pow(deviation, tier + 1);
+      const askOrder = this.createOrder(ORDER_SIDE_ASK, askPrice, askAmount);
+
+      const bidPrice = getPrice(tier, -1);
+      const bidAmount = balanceBase * Math.pow(deviation, tier + 1) - balanceBase * Math.pow(deviation, tier);
+      const bidOrder = this.createOrder(ORDER_SIDE_BID, bidPrice, bidAmount);
+
+      acc = [...acc, askOrder, bidOrder];
+      return acc;
+    }, []);
+
+    await defaultClient.batchOrderPut(userId, this.market, true, orders);
+  }
+
+  createOrder(order_side: number, price: number, amount: number) {
+    return {
+      market: this.market,
+      order_side,
       order_type: ORDER_TYPE_LIMIT,
-      amount: (B_BAL / tiersAmount).toFixed(6),
-      price: bidPrice.toFixed(6),
-      taker_fee: fee,
-      maker_fee: fee,
+      price: price.toFixed(6),
+      amount: amount.toFixed(6),
+      taker_fee: this.takerFee,
+      maker_fee: this.makerFee,
     };
+  }
+}
 
-    acc = [...acc, askOrder, bidOrder];
-    return acc;
-  }, []);
+export function main() {
+  const bot1 = new LiquidityBot({
+    base: "DIF",
+    quote: "BTC",
+    deviation: 1.002, // 0.2%
+    tiersAmount: 20,
+    userId: TestUser.USER1,
+  });
 
-  await defaultClient.batchOrderPut(user_id, market, false, orders);
-};
+  const bot2 = new LiquidityBot({
+    base: "DIF",
+    quote: "BTC",
+    deviation: 1.002, // 0.2%
+    tiersAmount: 20,
+    userId: TestUser.USER2,
+  });
 
-setInterval(() => {
-  tick(TestUser.USER1);
-}, 2000);
+  setInterval(() => {
+    bot1.tick().catch(console.error);
+  }, 2000);
+
+  setTimeout(() => {
+    setInterval(() => {
+      bot2.tick().catch(console.error);
+    }, 2000);
+  }, 1000);
+}
+
+main();
