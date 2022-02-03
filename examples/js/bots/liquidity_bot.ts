@@ -34,6 +34,7 @@ class LiquidityBot {
       console.log("not trades happend, skipping");
       return;
     }
+    console.log("trades happend, adjusting orders");
 
     this.balanceCache[quote] = balanceQuote;
     this.balanceCache[base] = balanceBase;
@@ -59,15 +60,30 @@ class LiquidityBot {
   }
 
   createOrder(order_side: number, price: number, amount: number) {
+    // TODO: get percision from market
     return {
       market: this.market,
       order_side,
       order_type: ORDER_TYPE_LIMIT,
-      price: price.toFixed(6),
-      amount: amount.toFixed(6),
+      price: this.round(price, order_side, 6),
+      amount: this.round(amount, order_side, 6),
       taker_fee: this.takerFee,
       maker_fee: this.makerFee,
     };
+  }
+
+  round(amount: number, orderSide: number, precision: number) {
+    const multiplier = Math.pow(10, precision);
+    const rounded = amount * multiplier;
+
+    switch (orderSide) {
+      case ORDER_SIDE_ASK:
+        return Math.ceil(rounded) / multiplier;
+      case ORDER_SIDE_BID:
+        return Math.floor(rounded) / multiplier;
+      default:
+        return Math.round(rounded) / multiplier;
+    }
   }
 }
 
