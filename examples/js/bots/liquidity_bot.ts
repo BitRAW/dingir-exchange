@@ -1,4 +1,4 @@
-import { defaultClient } from "../client";
+import { Client, defaultClient } from "../client";
 import { ORDER_SIDE_ASK, ORDER_SIDE_BID, ORDER_TYPE_LIMIT, TestUser } from "../config";
 
 interface LiquidityBotConfig {
@@ -7,6 +7,7 @@ interface LiquidityBotConfig {
   deviation: number;
   tiersAmount: number;
   userId: TestUser;
+  client: Client;
 }
 
 class LiquidityBot {
@@ -19,13 +20,9 @@ class LiquidityBot {
     this.market = `${config.base}_${config.quote}`;
   }
 
-  async init() {
-    await defaultClient.connect();
-  }
-
   async tick() {
     const { quote, base, userId, deviation, tiersAmount } = this.config;
-    const balance = await defaultClient.balanceQuery(userId);
+    const balance = await this.config.client.balanceQuery(userId);
 
     const balanceQuote = +balance.get(quote).available + +balance.get(quote).frozen;
     const balanceBase = +balance.get(base).available + +balance.get(base).frozen;
@@ -56,17 +53,17 @@ class LiquidityBot {
       return acc;
     }, []);
 
-    await defaultClient.batchOrderPut(userId, this.market, true, orders);
+    await this.config.client.batchOrderPut(userId, this.market, true, orders);
   }
 
   createOrder(order_side: number, price: number, amount: number) {
-    // TODO: get percision from market
+    const market = this.config.client.markets.get(this.market);
     return {
       market: this.market,
       order_side,
       order_type: ORDER_TYPE_LIMIT,
-      price: this.round(price, order_side, 6),
-      amount: this.round(amount, order_side, 6),
+      price: this.round(price, order_side, market.price_precision),
+      amount: this.round(amount, order_side, market.amount_precision),
       taker_fee: this.takerFee,
       maker_fee: this.makerFee,
     };
@@ -87,13 +84,16 @@ class LiquidityBot {
   }
 }
 
-export function main() {
+export async function main() {
+  await defaultClient.connect();
+
   const bot1 = new LiquidityBot({
     base: "DIF",
     quote: "BTC",
     deviation: 1.002, // 0.2%
     tiersAmount: 20,
     userId: TestUser.USER1,
+    client: defaultClient,
   });
 
   const bot2 = new LiquidityBot({
@@ -102,6 +102,7 @@ export function main() {
     deviation: 1.002, // 0.2%
     tiersAmount: 20,
     userId: TestUser.USER2,
+    client: defaultClient,
   });
 
   setInterval(() => {
