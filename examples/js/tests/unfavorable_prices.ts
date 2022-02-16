@@ -36,6 +36,26 @@ async function setupAsset() {
   await depositAssets({ BTC: "100.0", DIF: "50.0" }, bidUser);
 }
 
+async function checkAskUserBalance() {
+  const balanceAsk = await client.balanceQuery(askUser);
+  const btcBalance = balanceAsk.get("BTC");
+  const difBalance = balanceAsk.get("DIF");
+  assertDecimalEqual(btcBalance.available, "108");
+  assertDecimalEqual(btcBalance.frozen, "0");
+  assertDecimalEqual(difBalance.available, "46");
+  assertDecimalEqual(difBalance.frozen, "0");
+}
+
+async function checkBidUserBalance() {
+  const balanceBid = await client.balanceQuery(bidUser);
+  const btcBalance = balanceBid.get("BTC");
+  const difBalance = balanceBid.get("DIF");
+  assertDecimalEqual(btcBalance.available, "92");
+  assertDecimalEqual(btcBalance.frozen, "0");
+  assertDecimalEqual(difBalance.available, "54");
+  assertDecimalEqual(difBalance.frozen, "0");
+}
+
 async function wrongBidPriceTest() {
   const askOrder = await client.orderPut(askUser, market, ORDER_SIDE_ASK, ORDER_TYPE_LIMIT, /*amount*/ "4", /*price*/ "2", fee, fee);
   const bidOrder = await client.orderPut(bidUser, market, ORDER_SIDE_BID, ORDER_TYPE_LIMIT, /*amount*/ "4", /*price*/ "10", fee, fee);
@@ -43,24 +63,26 @@ async function wrongBidPriceTest() {
   console.log("ask order id", askOrder.id);
   console.log("bid order id", bidOrder.id);
 
-  // the trade should have happend with a price of "2"
-  const balanceAsk = await client.balanceQuery(askUser);
-  let btcBalance = balanceAsk.get("BTC");
-  let difBalance = balanceAsk.get("DIF");
-  assertDecimalEqual(btcBalance.available, "108");
-  assertDecimalEqual(btcBalance.frozen, "0");
-  assertDecimalEqual(difBalance.available, "46");
-  assertDecimalEqual(difBalance.frozen, "0");
-
-  const balanceBid = await client.balanceQuery(bidUser);
-  btcBalance = balanceBid.get("BTC");
-  difBalance = balanceBid.get("DIF");
-  assertDecimalEqual(btcBalance.available, "92");
-  assertDecimalEqual(btcBalance.frozen, "0");
-  assertDecimalEqual(difBalance.available, "54");
-  assertDecimalEqual(difBalance.frozen, "0");
+  await checkAskUserBalance();
+  await checkBidUserBalance();
 
   console.log("wrongBidPriceTest successfull");
+}
+
+async function wrongBidPriceWithBigVolumeTest() {
+  const askOrder = await client.orderPut(askUser, market, ORDER_SIDE_ASK, ORDER_TYPE_LIMIT, /*amount*/ "4", /*price*/ "2", fee, fee);
+  const bidOrder = await client.orderPut(bidUser, market, ORDER_SIDE_BID, ORDER_TYPE_LIMIT, /*amount*/ "10", /*price*/ "10", fee, fee);
+
+  console.log("ask order id", askOrder.id);
+  console.log("bid order id", bidOrder.id);
+
+  await checkAskUserBalance();
+
+  const openOrders = await client.orderQuery(bidUser, market);
+
+  assertDecimalEqual(openOrders.orders[0].remain, "6");
+
+  console.log("wrongBidPriceWithBigVolumeTest successfull");
 }
 
 async function wrongAskPriceTest() {
@@ -70,33 +92,42 @@ async function wrongAskPriceTest() {
   console.log("ask order id", askOrder.id);
   console.log("bid order id", bidOrder.id);
 
-  // the trade should have happend with a price of "2"
-  const balanceAsk = await client.balanceQuery(askUser);
-  let btcBalance = balanceAsk.get("BTC");
-  let difBalance = balanceAsk.get("DIF");
-  assertDecimalEqual(btcBalance.available, "116");
-  assertDecimalEqual(btcBalance.frozen, "0");
-  assertDecimalEqual(difBalance.available, "42");
-  assertDecimalEqual(difBalance.frozen, "0");
-
-  const balanceBid = await client.balanceQuery(bidUser);
-  btcBalance = balanceBid.get("BTC");
-  difBalance = balanceBid.get("DIF");
-  assertDecimalEqual(btcBalance.available, "84");
-  assertDecimalEqual(btcBalance.frozen, "0");
-  assertDecimalEqual(difBalance.available, "58");
-  assertDecimalEqual(difBalance.frozen, "0");
+  await checkAskUserBalance();
+  await checkBidUserBalance();
 
   console.log("wrongAskPriceTest successfull");
 }
 
+async function wrongAskPriceWithBigVolumeTest() {
+  const bidOrder = await client.orderPut(bidUser, market, ORDER_SIDE_BID, ORDER_TYPE_LIMIT, /*amount*/ "4", /*price*/ "2", fee, fee);
+  const askOrder = await client.orderPut(askUser, market, ORDER_SIDE_ASK, ORDER_TYPE_LIMIT, /*amount*/ "10", /*price*/ "0.1", fee, fee);
+
+  console.log("ask order id", askOrder.id);
+  console.log("bid order id", bidOrder.id);
+
+  await checkBidUserBalance();
+
+  const openOrders = await client.orderQuery(askUser, market);
+
+  assertDecimalEqual(openOrders.orders[0].remain, "6");
+
+  console.log("wrongAskPriceWithBigVolumeTest successfull");
+}
+
+async function beforeEach() {
+  await client.debugReset(await client.auth.getAuthTokenMeta(TestUser.ADMIN));
+  await setupAsset();
+}
+
 async function main() {
+  const tests = [wrongBidPriceTest, wrongAskPriceTest, wrongBidPriceWithBigVolumeTest, wrongAskPriceWithBigVolumeTest];
+
   try {
-    await client.debugReset(await client.auth.getAuthTokenMeta(TestUser.ADMIN));
     await infoList();
-    await setupAsset();
-    await wrongBidPriceTest();
-    await wrongAskPriceTest();
+    for (const test of tests) {
+      await beforeEach();
+      await test();
+    }
   } catch (error) {
     console.error("Caught error:", error);
     process.exit(1);
