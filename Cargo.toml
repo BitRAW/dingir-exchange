@@ -19,7 +19,7 @@ dotenv = "0.15.0"
 fluidex-common = { git = "https://github.com/fluidex/common-rs", branch = "master", features = [ "kafka", "non-blocking-tracing", "rust-decimal-dingir-exchange" ] }
 futures = "0.3.13"
 futures-channel = "0.3.13"
-futures-core = { version = "0.3.13", default-features = false }
+futures-core = { version = "0.3.21", default-features = false }
 futures-util = { version = "0.3.13", default-features = false }
 hex = "0.4.3"
 humantime = "2.1.0"
